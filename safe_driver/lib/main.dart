@@ -3,7 +3,10 @@ import 'package:safe_driver/home_screen.dart';
 import 'package:safe_driver/login.dart';
 import 'package:safe_driver/monitoring.dart';
 import 'package:safe_driver/ranking.dart';
-import 'package:safe_driver/signUpScreen.dart'; // Importa a nova tela
+import 'package:safe_driver/signUpScreen.dart';
+import 'package:safe_driver/history.dart';
+import 'package:safe_driver/profile.dart';
+import 'package:safe_driver/splash_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -24,7 +27,7 @@ class MyApp extends StatelessWidget {
         fontFamily: 'sans-serif',
       ),
       // A tela principal do nosso app agora é a LoginScreen
-      home: const RankingScreen(),
+      home: const SplashScreen(),
       debugShowCheckedModeBanner: false, // Remove o banner de "Debug"
     );
   }

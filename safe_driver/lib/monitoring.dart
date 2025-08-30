@@ -1,257 +1,421 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart'; // <-- Import para localização
 
-class RankingScreen extends StatelessWidget {
-  const RankingScreen({super.key});
+// Enum para controlar a aba de resumo selecionada
+enum SummaryTab { braking, speed, acceleration }
+
+class MonitoringScreen extends StatefulWidget {
+  const MonitoringScreen({super.key});
+
+  @override
+  State<MonitoringScreen> createState() => _MonitoringScreenState();
+}
+
+class _MonitoringScreenState extends State<MonitoringScreen> {
+  // Gerencia qual aba de resumo está ativa
+  SummaryTab _selectedTab = SummaryTab.speed;
+
+  // Variáveis de estado para o mapa dinâmico
+  final MapController _mapController = MapController();
+  LatLng? _currentPosition;
+  bool _isLoadingLocation = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _determinePosition(); // Busca a localização ao iniciar a tela
+  }
+
+  // Função para obter a localização atual do dispositivo (mesma da HomeScreen)
+  Future<void> _determinePosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Por favor, ative o serviço de localização.')));
+      }
+      setState(() => _isLoadingLocation = false);
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('A permissão de localização foi negada.')));
+        }
+        setState(() => _isLoadingLocation = false);
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('A permissão de localização foi negada permanentemente.')));
+      }
+      setState(() => _isLoadingLocation = false);
+      return;
+    }
+
+    try {
+      final position = await Geolocator.getCurrentPosition();
+      if (mounted) {
+        setState(() {
+          _currentPosition = LatLng(position.latitude, position.longitude);
+          _isLoadingLocation = false;
+          _mapController.move(_currentPosition!, 15.0);
+        });
+      }
+    } catch (e) {
+      print("Erro ao obter localização: $e");
+      if (mounted) {
+        setState(() => _isLoadingLocation = false);
+      }
+    }
+  }
+
+  // 1. Função para mostrar o popup de sucesso
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Impede que o usuário feche clicando fora
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          icon: const Icon(Icons.check_circle, color: Colors.green, size: 60),
+          title: const Text('Monitoramento Concluído!', textAlign: TextAlign.center),
+          content: const Text(
+            'Sua viagem foi registrada com sucesso. Confira os detalhes no seu histórico.',
+            textAlign: TextAlign.center,
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: <Widget>[
+            TextButton(
+              child: const Text('OK'),
+              onPressed: () {
+                Navigator.of(context).pop(); // Fecha o dialog
+                Navigator.of(context).pop(); // Volta para a HomeScreen
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Fundo claro, como solicitado
-      backgroundColor: Colors.grey[100],
+      backgroundColor: Colors.grey[200],
       appBar: AppBar(
-        backgroundColor: Colors.transparent, // AppBar transparente para mesclar com o fundo
+        backgroundColor: Colors.grey[200],
         elevation: 0,
+        centerTitle: true,
         title: const Text(
-          "Ranking",
+          'Monitoramento',
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
-        iconTheme: const IconThemeData(color: Colors.black),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildUserProfileCard(),
+            _buildMonitoringCard(),
             const SizedBox(height: 24),
-            _buildChallengesSection(),
+            _buildSummarySection(),
+            const SizedBox(height: 24),
+            _buildTipsSection(),
           ],
         ),
       ),
     );
   }
 
-  // Card principal com as informações do usuário
-  Widget _buildUserProfileCard() {
+  // Card do topo com o mapa e status
+  Widget _buildMonitoringCard() {
     return Card(
-      color: const Color(0xFFE0E0E0), // Cinza claro para o card
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       elevation: 0,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24.0),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Ícone de perfil e nome
-            const CircleAvatar(
-              radius: 50,
-              backgroundColor: Color(0xFFBDBDBD),
-              child: Icon(
-                Icons.person,
-                size: 60,
-                color: Color(0xFFFAFAFA),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              "User",
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Card interno com as estatísticas
-            _buildStatsCard(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Card branco com Pontos, Posição e Desafios
-  Widget _buildStatsCard() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: Card(
-        color: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        elevation: 0,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildStatItem(Icons.star_border, "560", "Pontos"),
-              _buildStatItem(Icons.emoji_events_outlined, "10°", "Posição"),
-              _buildStatItem(Icons.track_changes_outlined, "18", "Desafios"),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Widget para um item de estatística individual
-  Widget _buildStatItem(IconData icon, String value, String label) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.black54, size: 30),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.black54,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Seção de Desafios
-  Widget _buildChallengesSection() {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              "Desafios",
-              style: TextStyle(
-                color: Colors.black, // Cor do texto ajustada para o fundo claro
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.filter_list, color: Colors.blue),
-              onPressed: () {
-                // TODO: Implementar lógica de filtro
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        // Card com a lista de desafios
-        Card(
-          color: const Color(0xFFE0E0E0),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          elevation: 0,
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
+            Row(
               children: [
-                _buildChallengeItem(
-                  title: "Economize combustível!",
-                  description: "Economize \$20,00 em combustível esta semana.",
-                  progress: 1.0, // 100%
-                  points: 20,
-                  isCompleted: true,
-                ),
-                const Divider(color: Colors.grey),
-                _buildChallengeItem(
-                  title: "Frenagem Consciente!",
-                  description: "Dirija 100km sem frenagens bruscas.",
-                  progress: 0.71, // 71%
-                  points: 15,
-                  isCompleted: false,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Widget para um item de desafio individual
-  Widget _buildChallengeItem({
-    required String title,
-    required String description,
-    required double progress,
-    required int points,
-    required bool isCompleted,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0),
-      child: Row(
-        children: [
-          _buildProgressCircle(progress),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                // 2. Mapa agora é dinâmico
+                Container(
+                  width: 100,
+                  height: 100,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(12),
                   ),
+                  child: _isLoadingLocation
+                      ? const Center(child: CircularProgressIndicator())
+                      : FlutterMap(
+                          mapController: _mapController,
+                          options: MapOptions(
+                            initialCenter: _currentPosition ?? const LatLng(-23.5613, -46.6565),
+                            initialZoom: 15.0,
+                            interactionOptions: const InteractionOptions(
+                              flags: InteractiveFlag.none,
+                            ),
+                          ),
+                          children: [
+                            TileLayer(
+                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            ),
+                            if (_currentPosition != null)
+                              MarkerLayer(
+                                markers: [
+                                  Marker(
+                                    point: _currentPosition!,
+                                    width: 40,
+                                    height: 40,
+                                    child: Icon(
+                                      Icons.location_pin,
+                                      size: 40,
+                                      color: Colors.red.shade700,
+                                    ),
+                                  ),
+                                ],
+                              )
+                          ],
+                        ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: const TextStyle(fontSize: 14, color: Colors.black54),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: isCompleted ? () {} : null, // Habilita/desabilita o botão
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isCompleted ? Colors.blue : Colors.grey,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: SizedBox(
+                    height: 100,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Localização atual', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const Text('Em andamento', style: TextStyle(color: Colors.grey)),
+                      ],
                     ),
                   ),
-                  child: Text(
-                    "Resgatar $points pts",
-                    style: const TextStyle(color: Colors.white),
-                  ),
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _showSuccessDialog, // <-- 1. Chama o popup
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Encerrar',
+                style: TextStyle(
+                    color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ... (O restante do seu código _buildSummarySection, _buildTipsSection, etc., permanece o mesmo)
+  Widget _buildSummarySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Resumo', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        _buildSummaryTabs(),
+        const SizedBox(height: 16),
+        _buildSummaryContent(), // Conteúdo dinâmico baseado na aba
+        const SizedBox(height: 8),
+        Center(
+          child: Text(
+            '${DateTime.now().day} de ago - ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')} - Última atualização',
+            style: TextStyle(color: Colors.grey[600], fontSize: 12),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryTabs() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.blue[100]?.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildTabButton('Frenagem', SummaryTab.braking),
+          _buildTabButton('Velocidade', SummaryTab.speed),
+          _buildTabButton('Aceleração', SummaryTab.acceleration),
         ],
       ),
     );
   }
 
-  // Círculo de progresso customizado
-  Widget _buildProgressCircle(double progress) {
-    return SizedBox(
-      height: 70,
-      width: 70,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          CircularProgressIndicator(
-            value: progress,
-            strokeWidth: 8,
-            backgroundColor: Colors.white,
-            valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
-          ),
-          Center(
-            child: Text(
-              "${(progress * 100).toInt()}%",
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
+  Widget _buildTabButton(String text, SummaryTab tab) {
+    final isSelected = _selectedTab == tab;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _selectedTab = tab; // Atualiza a aba selecionada
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: isSelected
+              ? BoxDecoration(
+                  color: Colors.blue,
+                  borderRadius: BorderRadius.circular(30),
+                )
+              : null,
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.black54,
+              fontWeight: FontWeight.bold,
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryContent() {
+    switch (_selectedTab) {
+      case SummaryTab.speed:
+        return _buildInfoRow('Velocidade atual', '60', 'Km/h', 'Velocidade ideal', '30', 'Km/h');
+      case SummaryTab.braking:
+        return _buildInfoRow('Frenagens bruscas', '2', 'hoje', 'Média semanal', '5', '');
+      case SummaryTab.acceleration:
+        return _buildInfoRow('Acelerações bruscas', '4', 'hoje', 'Média semanal', '8', '');
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildInfoRow(String label1, String value1, String unit1, String label2, String value2, String unit2) {
+    return Row(
+      children: [
+        Expanded(child: _buildInfoCard(label1, value1, unit1)),
+        const SizedBox(width: 16),
+        Expanded(child: _buildInfoCard(label2, value2, unit2)),
+      ],
+    );
+  }
+
+  Widget _buildInfoCard(String label, String value, String unit) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Text(label, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 4),
+              Text(unit, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+            ],
+          )
         ],
       ),
+    );
+  }
+  
+  Widget _buildTipsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Dicas', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        _buildHerbieCard(),
+      ],
+    );
+  }
+
+  Widget _buildHerbieCard() {
+    return Card(
+      color: Colors.grey[300],
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const Text('HERBIE', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(width: 4),
+                Icon(Icons.auto_awesome, color: Colors.blue.shade700, size: 16),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.mic, color: Colors.blue),
+                const SizedBox(width: 8),
+                Expanded(child: _buildWaveform()), // Simulação da onda
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Frenagem brusca detectada, atenção!',
+              style: TextStyle(color: Colors.grey.shade800),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWaveform() {
+    final random = Random();
+    final List<double> barHeights = List.generate(40, (index) => random.nextDouble() * 20 + 2);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: barHeights.map((height) {
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 1.5),
+          width: 3,
+          height: height,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade700,
+            borderRadius: BorderRadius.circular(5),
+          ),
+        );
+      }).toList(),
     );
   }
 }

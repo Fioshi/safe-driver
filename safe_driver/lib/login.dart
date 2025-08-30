@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:safe_driver/forgot_password.dart';
+import 'package:safe_driver/home_screen.dart';
+import 'package:safe_driver/signUpScreen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -36,16 +39,35 @@ class _LoginScreenState extends State<LoginScreen> {
     // O método validate() aciona a validação em todos os TextFormFields do formulário
     if (_formKey.currentState!.validate()) {
       // Se o formulário for válido, prossiga com a lógica de login
-      // TODO: Implementar a lógica de login aqui (ex: com Supabase ou Firebase)
-      print("Email: ${_emailController.text}");
-      print("Senha: ${_passwordController.text}");
 
-      // Mostra um feedback visual para o usuário (simulação)
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Login efetuado com sucesso! (Simulação)'),
-          backgroundColor: Colors.green,
-        ),
+      // =======================================================================
+      // TODO: BACKEND - LÓGICA DE VALIDAÇÃO REAL
+      // =======================================================================
+      // Neste ponto, você faria a chamada para o seu backend (Firebase, Supabase, etc.)
+      // para verificar se o e-mail e a senha estão corretos.
+      //
+      // Exemplo:
+      // final response = await meuBackend.auth.signIn(
+      //   email: _emailController.text,
+      //   password: _passwordController.text,
+      // );
+      //
+      // if (response.error != null) {
+      //   // Se houver erro, mostre uma mensagem para o usuário
+      //   ScaffoldMessenger.of(context).showSnackBar(
+      //     SnackBar(content: Text(response.error.message)),
+      //   );
+      // } else {
+      //   // Se o login for bem-sucedido, navegue para a HomeScreen
+      //   Navigator.of(context).pushReplacement(...);
+      // }
+      // =======================================================================
+
+      // Como ainda não temos backend, vamos navegar diretamente para a home.
+      print("Login Válido (Simulação). Navegando para a HomeScreen...");
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
       );
     }
   }
@@ -54,13 +76,12 @@ class _LoginScreenState extends State<LoginScreen> {
   void _handleGoogleSignIn() {
     // TODO: Implementar a lógica de login com Google
     print("Botão 'Entrar com Google' pressionado!");
-     ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Login com Google (Simulação)'),
-        ),
-      );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Login com Google (Simulação)'),
+      ),
+    );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -178,9 +199,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     textInputAction: TextInputAction.done,
                     onFieldSubmitted: (_) => _handleLogin(),
+                    // VALIDAÇÕES DA SENHA ATUALIZADAS
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Por favor, digite sua senha.';
+                      }
+                      if (value.length < 8) {
+                        return 'A senha deve ter no mínimo 8 caracteres.';
+                      }
+                      if (!value.contains(RegExp(r'[A-Z]'))) {
+                        return 'A senha deve conter uma letra maiúscula.';
+                      }
+                      if (!value.contains(RegExp(r'[a-z]'))) {
+                        return 'A senha deve conter uma letra minúscula.';
+                      }
+                      if (!value.contains(RegExp(r'[0-9]'))) {
+                        return 'A senha deve conter pelo menos um número.';
                       }
                       return null;
                     },
@@ -191,9 +225,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: GestureDetector(
-                       onTap: () {
-                        // TODO: Implementar navegação para a tela de recuperação de senha
-                        print("Link 'Esqueceu sua senha?' pressionado!");
+                      onTap: () {
+                        // NAVEGAÇÃO PARA A TELA DE ESQUECI SENHA
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const ForgotPasswordScreen()),
+                        );
                       },
                       child: const Text(
                         'Esqueceu sua senha?',
@@ -276,8 +314,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Text('Ainda não possui uma conta? '),
                       GestureDetector(
                         onTap: () {
-                          // TODO: Navegar para a tela de Cadastro
-                          print("Link 'Cadastre-se' pressionado!");
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const SignUpScreen()),
+                          );
                         },
                         child: const Text(
                           'Cadastre-se',

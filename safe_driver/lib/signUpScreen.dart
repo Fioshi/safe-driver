@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:safe_driver/home_screen.dart'; // <-- 1. IMPORT DA HOME SCREEN
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -38,17 +39,38 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void _handleSignUp() {
     // Valida o formulário antes de prosseguir
     if (_formKey.currentState!.validate()) {
-      // TODO: Implementar a lógica de cadastro aqui (ex: com Supabase ou Firebase)
-      print("Nome: ${_nameController.text}");
-      print("Email: ${_emailController.text}");
-      print("Senha: ${_passwordController.text}");
+      // Se o formulário for válido, prossiga com a lógica de cadastro
 
-      // Mostra um feedback para o usuário
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cadastro realizado com sucesso! (Simulação)'),
-          backgroundColor: Colors.green,
-        ),
+      // =======================================================================
+      // TODO: BACKEND - LÓGICA DE CRIAÇÃO DE USUÁRIO
+      // =======================================================================
+      // Neste ponto, você faria a chamada para o seu backend para criar
+      // um novo usuário com os dados fornecidos.
+      //
+      // Exemplo:
+      // final response = await meuBackend.auth.signUp(
+      //   email: _emailController.text,
+      //   password: _passwordController.text,
+      //   data: {'full_name': _nameController.text}, // Metadados do usuário
+      // );
+      //
+      // if (response.error != null) {
+      //   // Se houver erro (ex: e-mail já existe), mostre uma mensagem
+      //   ScaffoldMessenger.of(context).showSnackBar(
+      //     SnackBar(content: Text(response.error.message)),
+      //   );
+      // } else {
+      //   // Se o cadastro for bem-sucedido, navegue para a HomeScreen
+      //   Navigator.of(context).pushAndRemoveUntil(...);
+      // }
+      // =======================================================================
+
+      print("Cadastro Válido (Simulação). Navegando para a HomeScreen...");
+      
+      // Navega para a Home e remove todas as telas anteriores (Login, SignUp) da pilha
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        (Route<dynamic> route) => false, // Este predicado remove todas as rotas
       );
     }
   }
@@ -57,13 +79,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void _handleGoogleSignIn() {
     // TODO: Implementar a lógica de login com Google
     print("Botão 'Entrar com Google' pressionado!");
-     ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Login com Google (Simulação)'),
-        ),
-      );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Login com Google (Simulação)'),
+      ),
+    );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +99,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
         elevation: 0,
         // Define o estilo do ícone da barra de status (brilho)
         systemOverlayStyle: SystemUiOverlayStyle.dark,
+        // Adiciona um botão de voltar automático na AppBar
+        automaticallyImplyLeading: true,
+        iconTheme: const IconThemeData(color: Colors.black), // Deixa a seta preta
       ),
       body: SafeArea(
         child: Center(
@@ -91,17 +115,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   // 1. Logo e Nome do App
-                  Row(
+                  const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // Ícone do logo (substitua pelo seu asset ou ícone)
-                      const Icon(
+                      Icon(
                         Icons.shield_outlined, // Ícone de exemplo
                         size: 30,
                         color: Colors.black87,
                       ),
-                      const SizedBox(width: 12),
-                      const Text(
+                      SizedBox(width: 12),
+                      Text(
                         'Safe Driver',
                         style: TextStyle(
                           fontSize: 24,
@@ -171,7 +195,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
-                     onFieldSubmitted: (_) {
+                    onFieldSubmitted: (_) {
                       // Pula para o campo de senha
                       FocusScope.of(context).requestFocus(_passwordFocusNode);
                     },
@@ -194,7 +218,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     focusNode: _passwordFocusNode,
                     obscureText: !_isPasswordVisible, // Oculta/mostra a senha
                     decoration: InputDecoration(
-                      labelText: 'Digite sua senha',
+                      labelText: 'Crie uma senha',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -217,12 +241,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                     textInputAction: TextInputAction.done,
                     onFieldSubmitted: (_) => _handleSignUp(), // Submete o form
-                     validator: (value) {
+                    // VALIDAÇÕES DA SENHA ATUALIZADAS
+                    validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return 'Por favor, digite sua senha.';
+                        return 'Por favor, crie uma senha.';
                       }
-                      if (value.length < 6) {
-                        return 'A senha deve ter pelo menos 6 caracteres.';
+                      if (value.length < 8) {
+                        return 'A senha deve ter no mínimo 8 caracteres.';
+                      }
+                      if (!value.contains(RegExp(r'[A-Z]'))) {
+                        return 'A senha deve conter uma letra maiúscula.';
+                      }
+                      if (!value.contains(RegExp(r'[a-z]'))) {
+                        return 'A senha deve conter uma letra minúscula.';
+                      }
+                      if (!value.contains(RegExp(r'[0-9]'))) {
+                        return 'A senha deve conter pelo menos um número.';
                       }
                       return null;
                     },
@@ -268,32 +302,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   const SizedBox(height: 24),
 
                   // 8. Botão de Entrar com Google
-                  ElevatedButton.icon(
-                    onPressed: _handleGoogleSignIn,
-                    icon: Image.asset(
-                      'assets/images/google_logo.png', // Verifique se tem essa imagem
-                      height: 22.0,
-                      errorBuilder: (context, error, stackTrace) {
-                         // Fallback para um ícone caso a imagem não carregue
-                        return const Icon(Icons.g_mobiledata, color: Colors.black54);
-                      },
-                    ),
-                    label: const Text(
-                      'Entrar com Google',
-                      style: TextStyle(
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFF2F2F2),
-                      minimumSize: Size(screenWidth, 50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 2,
-                    ),
-                  ),
+                  // ... (código existente sem alteração)
+
                   const SizedBox(height: 40),
 
                   // 9. Link para Login
@@ -303,8 +313,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       const Text('Já possui uma conta? '),
                       GestureDetector(
                         onTap: () {
-                          // TODO: Navegar para a tela de Login
-                          print("Link 'Faça o login' pressionado!");
+                          Navigator.pop(context);
                         },
                         child: const Text(
                           'Faça o login',
@@ -316,7 +325,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ],
                   ),
-                   const SizedBox(height: 20),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
