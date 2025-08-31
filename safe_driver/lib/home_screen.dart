@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -22,10 +23,21 @@ class _HomeScreenState extends State<HomeScreen> {
   LatLng? _currentPosition;
   bool _isLoadingLocation = true;
 
+  // NOVO: Controlador para o PageView (Carrossel)
+  late PageController _pageController;
+
   @override
   void initState() {
     super.initState();
     _determinePosition();
+    // Inicializa o PageController para o efeito de "espiar"
+    _pageController = PageController(viewportFraction: 0.9);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose(); // Limpa o controlador
+    super.dispose();
   }
 
   Future<void> _determinePosition() async {
@@ -81,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showStartMonitoringDialog() {
+    // ... (código existente sem alteração)
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -118,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text(
-          'Olá, user!',
+          'Olá, João!',
           style: TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.bold,
@@ -143,33 +156,132 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        // Removido o padding daqui para o PageView ocupar a tela toda
         child: Column(
           children: [
-            _buildPlanCard(context),
-            const SizedBox(height: 32),
-            const Center(
-              child: Text(
-                'Recentes',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
+            // WIDGET DO CARROSSEL DE CARDS
+            _buildInfoCarousel(),
+            
+            // O resto do conteúdo agora tem seu próprio padding
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  const SizedBox(height: 32),
+                  const Center(
+                    child: Text(
+                      'Recentes',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildRecentActions(),
+                  const SizedBox(height: 32),
+                  _buildMonitoringCard(context),
+                ],
               ),
-            ),
-            const SizedBox(height: 16),
-            _buildRecentActions(),
-            const SizedBox(height: 32),
-            _buildMonitoringCard(context),
+            )
           ],
         ),
       ),
     );
   }
 
+  // NOVO WIDGET: CARROSSEL COM PAGEVIEW
+  Widget _buildInfoCarousel() {
+    return SizedBox(
+      height: 180, // Altura fixa para o carrossel
+      child: PageView(
+        controller: _pageController,
+        children: [
+          // Adiciona padding em cada item do PageView
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: _buildGoldDriverCard(context),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: _buildPlanCard(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // NOVO WIDGET: CARD "GOLD DRIVER"
+  Widget _buildGoldDriverCard(BuildContext context) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      color: Colors.grey[200],
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Row(
+          children: [
+            // Coluna da Esquerda (Textos e Barra de Progresso)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.emoji_events, color: Colors.amber[700]),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Gold Driver',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Ranking: 560/1100', style: TextStyle(color: Colors.grey[800])),
+                  const SizedBox(height: 4),
+                  Text('Tempo de direção: 02h22', style: TextStyle(color: Colors.grey[800])),
+                  const Spacer(),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: const LinearProgressIndicator(
+                      value: 0.8, // 80%
+                      minHeight: 8,
+                      backgroundColor: Colors.white,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Coluna da Direita (Gráfico de Arco)
+            SizedBox(
+              width: 100,
+              height: 100,
+              child: CustomPaint(
+                painter: _ArcPainter(percentage: 0.52), // 52%
+                child: const Center(
+                  child: Text(
+                    '52%',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  // Widget antigo, agora parte do carrossel
   Widget _buildPlanCard(BuildContext context) {
-    // ... (código existente sem alteração)
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       color: Colors.grey[200],
@@ -179,10 +291,11 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
+            const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text(
+                Text(
                   'Meu plano\npara hoje',
                   style: TextStyle(
                     fontSize: 26,
@@ -190,24 +303,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 1.2,
                   ),
                 ),
-                const SizedBox(height: 20),
+                SizedBox(height: 20),
                 Row(
                   children: [
-                    const Text(
+                    Text(
                       'Desafio: ',
                       style: TextStyle(fontSize: 16),
                     ),
-                    GestureDetector(
-                      onTap: () {
-                        print("Desafio 'Frenagem Consciente' pressionado");
-                      },
-                      child: const Text(
-                        'Frenagem Consciente',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    Text(
+                      'Frenagem Consciente',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.blue,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
@@ -244,16 +352,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 2. WIDGET ATUALIZADO COM O NOVO BOTÃO "CORRIDAS"
+  // ... (Restante do seu código _buildRecentActions, _buildMonitoringCard, etc. sem alteração)
   Widget _buildRecentActions() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
         _buildActionButton(
-          icon: Icons.route_outlined, // Ícone alterado
-          label: 'Corridas', // Label alterado
+          icon: Icons.route_outlined,
+          label: 'Corridas',
           onTap: () {
-            // Navegação alterada para a TripsScreen
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const TripsScreen()),
@@ -286,7 +393,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildActionButton(
       {required IconData icon, required String label, required VoidCallback onTap}) {
-    // ... (código existente sem alteração)
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -307,7 +413,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMonitoringCard(BuildContext context) {
-    // ... (código existente sem alteração)
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       color: Colors.grey[200],
@@ -401,5 +506,56 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+}
+
+// CLASSE CUSTOM PAINTER PARA DESENHAR O ARCO
+class _ArcPainter extends CustomPainter {
+  final double percentage;
+
+  _ArcPainter({required this.percentage});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = min(size.width / 2, size.height / 2) - 10;
+    const startAngle = -pi / 2 - pi / 4; // Começa às "10:30"
+    const endAngle = pi + pi / 2; // O arco total vai até "7:30"
+    final sweepAngle = endAngle * percentage;
+
+    // Pincel para o fundo do arco
+    final backgroundPaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 12
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    // Pincel para o preenchimento do arco
+    final foregroundPaint = Paint()
+      ..color = Colors.blue
+      ..strokeWidth = 12
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      endAngle,
+      false,
+      backgroundPaint,
+    );
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepAngle,
+      false,
+      foregroundPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return true;
   }
 }

@@ -66,7 +66,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       // =======================================================================
 
       print("Cadastro Válido (Simulação). Navegando para a HomeScreen...");
-      
+
       // Navega para a Home e remove todas as telas anteriores (Login, SignUp) da pilha
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const HomeScreen()),
@@ -114,26 +114,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // 1. Logo e Nome do App
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Ícone do logo (substitua pelo seu asset ou ícone)
-                      Icon(
-                        Icons.shield_outlined, // Ícone de exemplo
-                        size: 30,
-                        color: Colors.black87,
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        'Safe Driver',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ],
+                  Image.asset(
+                    './images/logo.png',
+                    height: 50, // Ajuste a altura conforme necessário
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Icon(Icons.shield_outlined, size: 40);
+                    },
                   ),
                   const SizedBox(height: 40),
 
@@ -301,9 +287,40 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // 8. Botão de Entrar com Google
-                  // ... (código existente sem alteração)
-
+                  // 8. Botão de Entrar com Google (com imagem do Google)
+                  ElevatedButton(
+                    onPressed: _handleGoogleSignIn,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      minimumSize: Size(screenWidth, 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: Colors.grey),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Image.asset(
+                          './images/google_icon.png',
+                          height: 22.0,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(Icons.g_mobiledata);
+                          },
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Entrar com Google',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 40),
 
                   // 9. Link para Login

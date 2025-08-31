@@ -41,9 +41,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: 'Alexandre Pereira');
-    _emailController = TextEditingController(text: 'alexandre.p@email.com');
-    _phoneController = TextEditingController(text: '(11) 98765-4321');
+    _nameController = TextEditingController(text: 'João Victor Rossi');
+    _emailController = TextEditingController(text: 'joaovictor@gmail.com');
+    _phoneController = TextEditingController(text: '(11) 99999-9999');
     _corporateEmailController = TextEditingController();
     _selectedAutomobile = _automobileOptions.first;
     _selectedDrivingGoal = _drivingGoalOptions[2];

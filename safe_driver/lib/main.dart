@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
+
 import 'package:safe_driver/home_screen.dart';
 import 'package:safe_driver/login.dart';
 import 'package:safe_driver/monitoring.dart';
@@ -8,7 +10,15 @@ import 'package:safe_driver/history.dart';
 import 'package:safe_driver/profile.dart';
 import 'package:safe_driver/splash_screen.dart';
 
-void main() {
+void main() async { // 2. TRANSFORME A FUNÇÃO EM ASYNC
+  // 3. GARANTA QUE OS WIDGETS DO FLUTTER FORAM INICIALIZADOS
+  //    Isso é necessário porque estamos usando 'await' antes de 'runApp'.
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 4. INICIALIZE OS DADOS DE FORMATAÇÃO PARA O PORTUGUÊS DO BRASIL
+  await initializeDateFormatting('pt_BR', null);
+
+  // 5. AGORA RODE O SEU APLICATIVO NORMALMENTE
   runApp(const MyApp());
 }
 

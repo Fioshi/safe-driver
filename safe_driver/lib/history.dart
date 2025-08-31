@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter_map/flutter_map.dart'; // Import do flutter_map
+import 'package:latlong2/latlong.dart';      // Import do latlong2 para coordenadas
 import 'dart:math';
 
 import 'package:safe_driver/trips.dart'; // Import da tela de corridas
@@ -24,13 +26,14 @@ class HistoryData {
   });
 }
 
-// Modelo para os dados de uma corrida (reutilizado da trips_screen)
+// Modelo para os dados de uma corrida, agora com coordenadas
 class Trip {
   final int id;
   final String dateTime;
   final double economy;
   final int distance;
   final int points;
+  final LatLng location; // <-- Adicionada a localização
 
   Trip({
     required this.id,
@@ -38,6 +41,7 @@ class Trip {
     required this.economy,
     required this.distance,
     required this.points,
+    required this.location, // <-- Adicionada ao construtor
   });
 }
 
@@ -51,8 +55,10 @@ class HistoryPage extends StatefulWidget {
 class _HistoryPageState extends State<HistoryPage> {
   TimeFrame _selectedTimeFrame = TimeFrame.weekly;
   HistoryData? _currentData;
-  List<Trip> _recentTrips = []; // Lista para as 3 últimas corridas
+  List<Trip> _recentTrips = [];
   bool _isLoading = true;
+  
+  final Random _random = Random();
 
   @override
   void initState() {
@@ -60,28 +66,37 @@ class _HistoryPageState extends State<HistoryPage> {
     _fetchHistoryData(_selectedTimeFrame);
   }
 
+  // Função para gerar uma coordenada aleatória em São Paulo
+  LatLng _getRandomSpLocation() {
+    // Delimita uma área aproximada do centro expandido de SP
+    const minLat = -23.65; // Sul
+    const maxLat = -23.45; // Norte
+    const minLng = -46.73; // Oeste
+    const maxLng = -46.53; // Leste
+
+    final lat = minLat + _random.nextDouble() * (maxLat - minLat);
+    final lng = minLng + _random.nextDouble() * (maxLng - minLng);
+
+    return LatLng(lat, lng);
+  }
+
   Future<void> _fetchHistoryData(TimeFrame frame) async {
     setState(() {
       _isLoading = true;
     });
 
-    // =======================================================================
-    // TODO: BACKEND - BUSCAR DADOS REAIS DO HISTÓRICO E CORRIDAS
-    // =======================================================================
-    // A chamada de API agora deve retornar não só os dados para o gráfico
-    // (baseado no `frame`), mas também uma lista das 3 corridas mais recentes.
-    // =======================================================================
+    // ... (Comentário do Backend)
 
     await Future.delayed(const Duration(milliseconds: 300));
 
     if (mounted) {
       setState(() {
         _currentData = _getMockDataForFrame(frame);
-        // Popula a lista de corridas recentes com dados fictícios
+        // Popula a lista de corridas recentes com dados e localizações aleatórias
         _recentTrips = [
-          Trip(id: 1, dateTime: '30 de ago - 00:28', economy: 12.50, distance: 35, points: 85),
-          Trip(id: 2, dateTime: '29 de ago - 18:15', economy: 7.80, distance: 22, points: 72),
-          Trip(id: 3, dateTime: '29 de ago - 09:00', economy: 15.20, distance: 41, points: 91),
+          Trip(id: 1, dateTime: '30 de ago - 20:28', economy: 12.50, distance: 35, points: 85, location: _getRandomSpLocation()),
+          Trip(id: 2, dateTime: '29 de ago - 18:15', economy: 7.80, distance: 22, points: 72, location: _getRandomSpLocation()),
+          Trip(id: 3, dateTime: '29 de ago - 09:00', economy: 15.20, distance: 41, points: 91, location: _getRandomSpLocation()),
         ];
         _isLoading = false;
       });
@@ -127,9 +142,8 @@ class _HistoryPageState extends State<HistoryPage> {
   }
   
   List<FlSpot> _generateRandomSpots(int count, double max) {
-    final random = Random();
     return List.generate(count, (index) {
-      return FlSpot(index.toDouble(), random.nextDouble() * max);
+      return FlSpot(index.toDouble(), _random.nextDouble() * max);
     });
   }
 
@@ -162,14 +176,13 @@ class _HistoryPageState extends State<HistoryPage> {
             const SizedBox(height: 24),
             _buildChartCard(),
             const SizedBox(height: 32),
-            _buildRecentTripsSection(), // <-- WIDGET ATUALIZADO
+            _buildRecentTripsSection(),
           ],
         ),
       ),
     );
   }
 
-  // Seção "Anteriores" agora é dinâmica
   Widget _buildRecentTripsSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,7 +200,6 @@ class _HistoryPageState extends State<HistoryPage> {
             ),
             TextButton(
               onPressed: () {
-                // Navega para a tela com todas as corridas
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const TripsScreen()),
@@ -204,12 +216,10 @@ class _HistoryPageState extends State<HistoryPage> {
           ],
         ),
         const SizedBox(height: 16),
-        // Constrói os cards das 3 corridas recentes
         _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: _recentTrips.map((trip) {
-                // Adiciona um espaçamento entre os cards
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12.0),
                   child: _buildPreviousTripCard(trip),
@@ -220,7 +230,7 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  // Card de corrida agora recebe um objeto 'Trip'
+  // Card de corrida agora recebe um objeto 'Trip' e exibe um mapa
   Widget _buildPreviousTripCard(Trip trip) {
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -230,13 +240,40 @@ class _HistoryPageState extends State<HistoryPage> {
       ),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12.0),
-            child: Image.network(
-              'https://i.imgur.com/3o2NbA5.png',
-              width: 80,
-              height: 80,
-              fit: BoxFit.cover,
+          // MAPA SUBSTITUINDO A IMAGEM ESTÁTICA
+          SizedBox(
+            width: 80,
+            height: 80,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12.0),
+              child: FlutterMap(
+                options: MapOptions(
+                  initialCenter: trip.location, // Usa a localização aleatória da corrida
+                  initialZoom: 14.0,
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.none, // Desabilita interação com o mapa
+                  ),
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: trip.location,
+                        width: 40,
+                        height: 40,
+                        child: const Icon(
+                          Icons.location_pin,
+                          size: 40,
+                          color: Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -248,13 +285,6 @@ class _HistoryPageState extends State<HistoryPage> {
                 const SizedBox(height: 4),
                 Text('R\$ ${trip.economy.toStringAsFixed(2)} economizados', style: TextStyle(color: Colors.grey[700])),
                 Text('${trip.distance}km percorridos', style: TextStyle(color: Colors.grey[700])),
-                const SizedBox(height: 8),
-                InkWell(
-                  onTap: () {
-                    debugPrint("Botão 'Ver' da corrida ${trip.id} pressionado.");
-                  },
-                  child: const Text('Ver', style: TextStyle(color: Color(0xFF007BFF), fontWeight: FontWeight.bold, fontSize: 16)),
-                ),
               ],
             ),
           ),
@@ -264,7 +294,7 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
   
-  // ... (O resto do seu código, como _buildTimeFrameSelector, _buildStatsCards, _buildChartCard, etc., permanece o mesmo)
+  // ... (O resto do seu código, como _buildTimeFrameSelector, etc., permanece o mesmo)
   Widget _buildTimeFrameSelector() {
     return Container(
       width: double.infinity,

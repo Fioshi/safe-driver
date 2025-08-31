@@ -45,22 +45,6 @@ class _LoginScreenState extends State<LoginScreen> {
       // =======================================================================
       // Neste ponto, você faria a chamada para o seu backend (Firebase, Supabase, etc.)
       // para verificar se o e-mail e a senha estão corretos.
-      //
-      // Exemplo:
-      // final response = await meuBackend.auth.signIn(
-      //   email: _emailController.text,
-      //   password: _passwordController.text,
-      // );
-      //
-      // if (response.error != null) {
-      //   // Se houver erro, mostre uma mensagem para o usuário
-      //   ScaffoldMessenger.of(context).showSnackBar(
-      //     SnackBar(content: Text(response.error.message)),
-      //   );
-      // } else {
-      //   // Se o login for bem-sucedido, navegue para a HomeScreen
-      //   Navigator.of(context).pushReplacement(...);
-      // }
       // =======================================================================
 
       // Como ainda não temos backend, vamos navegar diretamente para a home.
@@ -77,9 +61,7 @@ class _LoginScreenState extends State<LoginScreen> {
     // TODO: Implementar a lógica de login com Google
     print("Botão 'Entrar com Google' pressionado!");
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Login com Google (Simulação)'),
-      ),
+      const SnackBar(content: Text('Login com Google (Simulação)')),
     );
   }
 
@@ -94,7 +76,8 @@ class _LoginScreenState extends State<LoginScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark, // Ícones escuros na status bar
+        systemOverlayStyle:
+            SystemUiOverlayStyle.dark, // Ícones escuros na status bar
       ),
       body: SafeArea(
         child: Center(
@@ -106,25 +89,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // 1. Logo e Nome do App
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.shield_outlined, // Ícone de exemplo
-                        size: 30,
-                        color: Colors.black87,
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        'Safe Driver',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ],
+                  // 1. LOGO DO APP (WIDGET ATUALIZADO)
+                  Image.asset(
+                    './images/logo.png',
+                    height: 50, // Ajuste a altura conforme necessário
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Icon(Icons.shield_outlined, size: 40);
+                    },
                   ),
                   const SizedBox(height: 40),
 
@@ -230,7 +201,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => const ForgotPasswordScreen()),
+                            builder: (context) => const ForgotPasswordScreen(),
+                          ),
                         );
                       },
                       child: const Text(
@@ -283,10 +255,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   ElevatedButton.icon(
                     onPressed: _handleGoogleSignIn,
                     icon: Image.asset(
-                      'assets/images/google_logo.png',
+                      './images/google_icon.png',
                       height: 22.0,
                       errorBuilder: (context, error, stackTrace) {
-                        return const Icon(Icons.g_mobiledata, color: Colors.black54);
+                        return const Icon(
+                          Icons.g_mobiledata,
+                          color: Colors.black54,
+                        );
                       },
                     ),
                     label: const Text(
@@ -316,7 +291,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (context) => const SignUpScreen()),
+                            MaterialPageRoute(
+                              builder: (context) => const SignUpScreen(),
+                            ),
                           );
                         },
                         child: const Text(
