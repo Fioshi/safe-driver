@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:geolocator/geolocator.dart'; // <-- Import para localização
+import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart'; // ALTERAÇÃO: Adicionada a importação para formatação de data/hora.
 
-// Enum para controlar a aba de resumo selecionada
 enum SummaryTab { braking, speed, acceleration }
 
 class MonitoringScreen extends StatefulWidget {
@@ -15,22 +16,47 @@ class MonitoringScreen extends StatefulWidget {
 }
 
 class _MonitoringScreenState extends State<MonitoringScreen> {
-  // Gerencia qual aba de resumo está ativa
   SummaryTab _selectedTab = SummaryTab.speed;
-
-  // Variáveis de estado para o mapa dinâmico
   final MapController _mapController = MapController();
-  LatLng? _currentPosition;
+  StreamSubscription<Position>? _positionStreamSubscription;
   bool _isLoadingLocation = true;
+
+  LatLng? _currentPosition;
+  Position? _lastPosition;
+  final List<LatLng> _routePoints = [];
+
+  double _currentSpeed = 0.0;
+  int _harshBrakingCount = 0;
+  int _harshAccelerationCount = 0;
+  String _herbieTip = "Dirija com segurança!";
+
+  DateTime? _tripStartTime; 
+  double _totalDistance = 0.0; 
+
+  // ALTERAÇÃO: Nova variável de estado para guardar a hora da última atualização.
+  DateTime? _lastUpdateTime;
+
+  static const double HARSH_ACCELERATION_THRESHOLD = 2.5;
+  static const double HARSH_BRAKING_THRESHOLD = -2.5;
 
   @override
   void initState() {
     super.initState();
-    _determinePosition(); // Busca a localização ao iniciar a tela
+    _startMonitoring();
   }
 
-  // Função para obter a localização atual do dispositivo (mesma da HomeScreen)
-  Future<void> _determinePosition() async {
+  @override
+  void dispose() {
+    _stopMonitoring();
+    super.dispose();
+  }
+
+  void _stopMonitoring() {
+    _positionStreamSubscription?.cancel();
+  }
+
+  Future<void> _startMonitoring() async {
+    // ... (lógica de permissão permanece a mesma)
     bool serviceEnabled;
     LocationPermission permission;
 
@@ -49,8 +75,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('A permissão de localização foi negada.')));
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('A permissão de localização foi negada.')));
         }
         setState(() => _isLoadingLocation = false);
         return;
@@ -66,28 +92,63 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
       return;
     }
 
-    try {
-      final position = await Geolocator.getCurrentPosition();
+    _tripStartTime = DateTime.now();
+
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 5,
+    );
+
+    _positionStreamSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings)
+            .listen((Position position) {
       if (mounted) {
         setState(() {
-          _currentPosition = LatLng(position.latitude, position.longitude);
+          // ALTERAÇÃO: Atualiza a variável com a hora atual a cada novo dado recebido.
+          _lastUpdateTime = DateTime.now();
+
           _isLoadingLocation = false;
-          _mapController.move(_currentPosition!, 15.0);
+          _currentPosition = LatLng(position.latitude, position.longitude);
+          _routePoints.add(_currentPosition!);
+          _currentSpeed = position.speed * 3.6;
+          _mapController.move(_currentPosition!, 16.0);
+          
+          if (_lastPosition != null) {
+            _calculateEvents(position);
+
+            _totalDistance += Geolocator.distanceBetween(
+              _lastPosition!.latitude,
+              _lastPosition!.longitude,
+              position.latitude,
+              position.longitude,
+            );
+          }
+          _lastPosition = position;
         });
       }
-    } catch (e) {
-      print("Erro ao obter localização: $e");
-      if (mounted) {
-        setState(() => _isLoadingLocation = false);
-      }
+    });
+  }
+
+  void _calculateEvents(Position currentPosition) {
+    final timeDiff = currentPosition.timestamp!.difference(_lastPosition!.timestamp!).inMilliseconds / 1000.0;
+    if (timeDiff == 0) return;
+    final speedDiff = currentPosition.speed - _lastPosition!.speed;
+    final acceleration = speedDiff / timeDiff;
+
+    if (acceleration > HARSH_ACCELERATION_THRESHOLD) {
+      _harshAccelerationCount++;
+      _herbieTip = "Aceleração brusca detectada! Cuidado ao arrancar.";
+    } else if (acceleration < HARSH_BRAKING_THRESHOLD) {
+      _harshBrakingCount++;
+      _herbieTip = "Frenagem brusca detectada! Mantenha distância.";
     }
   }
 
-  // 1. Função para mostrar o popup de sucesso
   void _showSuccessDialog() {
+    _stopMonitoring();
     showDialog(
       context: context,
-      barrierDismissible: false, // Impede que o usuário feche clicando fora
+      barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -102,14 +163,22 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
             TextButton(
               child: const Text('OK'),
               onPressed: () {
-                Navigator.of(context).pop(); // Fecha o dialog
-                Navigator.of(context).pop(); // Volta para a HomeScreen
+                Navigator.of(context).pop(); 
+                Navigator.of(context).pop(); 
               },
             ),
           ],
         );
       },
     );
+  }
+ 
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = twoDigits(duration.inHours);
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$hours:$minutes:$seconds";
   }
 
   @override
@@ -145,7 +214,35 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     );
   }
 
-  // Card do topo com o mapa e status
+  Widget _buildSummaryContent() {
+    final tripDuration = _tripStartTime != null ? DateTime.now().difference(_tripStartTime!) : Duration.zero;
+    final double distanceInKm = _totalDistance / 1000;
+    
+    final double averageSpeed = (tripDuration.inSeconds > 0)
+        ? (distanceInKm / (tripDuration.inSeconds / 3600))
+        : 0.0;
+
+    switch (_selectedTab) {
+      case SummaryTab.speed:
+        return _buildInfoRow(
+          'Velocidade atual', _currentSpeed.toStringAsFixed(0), 'Km/h',
+          'Velocidade média', averageSpeed.toStringAsFixed(1), 'Km/h',
+        );
+      case SummaryTab.braking:
+        return _buildInfoRow(
+          'Frenagens bruscas', _harshBrakingCount.toString(), 'nesta viagem',
+          'Tempo de viagem', _formatDuration(tripDuration), '',
+        );
+      case SummaryTab.acceleration:
+        return _buildInfoRow(
+          'Acelerações bruscas', _harshAccelerationCount.toString(), 'nesta viagem',
+          'Distância', distanceInKm.toStringAsFixed(2), 'Km',
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+  
   Widget _buildMonitoringCard() {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -156,7 +253,6 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
           children: [
             Row(
               children: [
-                // 2. Mapa agora é dinâmico
                 Container(
                   width: 100,
                   height: 100,
@@ -171,7 +267,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                           mapController: _mapController,
                           options: MapOptions(
                             initialCenter: _currentPosition ?? const LatLng(-23.5613, -46.6565),
-                            initialZoom: 15.0,
+                            initialZoom: 16.0,
                             interactionOptions: const InteractionOptions(
                               flags: InteractiveFlag.none,
                             ),
@@ -179,6 +275,15 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                           children: [
                             TileLayer(
                               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            ),
+                            PolylineLayer(
+                              polylines: [
+                                Polyline(
+                                  points: _routePoints,
+                                  color: Colors.blue,
+                                  strokeWidth: 5,
+                                ),
+                              ],
                             ),
                             if (_currentPosition != null)
                               MarkerLayer(
@@ -199,15 +304,15 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                         ),
                 ),
                 const SizedBox(width: 16),
-                Expanded(
+                const Expanded(
                   child: SizedBox(
                     height: 100,
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Localização atual', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        const Text('Em andamento', style: TextStyle(color: Colors.grey)),
+                         Text('Localização atual', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                         Text('Em andamento', style: TextStyle(color: Colors.grey)),
                       ],
                     ),
                   ),
@@ -216,7 +321,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _showSuccessDialog, // <-- 1. Chama o popup
+              onPressed: _showSuccessDialog,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 minimumSize: const Size(double.infinity, 50),
@@ -235,8 +340,42 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
       ),
     );
   }
-
-  // ... (O restante do seu código _buildSummarySection, _buildTipsSection, etc., permanece o mesmo)
+ 
+  Widget _buildHerbieCard() {
+    return Card(
+      color: Colors.grey[300],
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const Text('HERBIE', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(width: 4),
+                Icon(Icons.auto_awesome, color: Colors.blue.shade700, size: 16),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.mic, color: Colors.blue),
+                const SizedBox(width: 8),
+                Expanded(child: _buildWaveform()),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _herbieTip,
+              style: TextStyle(color: Colors.grey.shade800),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+ 
   Widget _buildSummarySection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,13 +384,19 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         const SizedBox(height: 16),
         _buildSummaryTabs(),
         const SizedBox(height: 16),
-        _buildSummaryContent(), // Conteúdo dinâmico baseado na aba
+        _buildSummaryContent(),
         const SizedBox(height: 8),
+        // ALTERAÇÃO: O widget de texto agora mostra a hora exata da última atualização.
         Center(
-          child: Text(
-            '${DateTime.now().day} de ago - ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')} - Última atualização',
-            style: TextStyle(color: Colors.grey[600], fontSize: 12),
-          ),
+          child: _lastUpdateTime == null
+              ? const Text(
+                  'Aguardando primeira atualização...',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                )
+              : Text(
+                  'Última atualização: ${DateFormat('HH:mm:ss').format(_lastUpdateTime!)}',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
         ),
       ],
     );
@@ -280,7 +425,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
       child: GestureDetector(
         onTap: () {
           setState(() {
-            _selectedTab = tab; // Atualiza a aba selecionada
+            _selectedTab = tab;
           });
         },
         child: Container(
@@ -304,20 +449,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     );
   }
 
-  Widget _buildSummaryContent() {
-    switch (_selectedTab) {
-      case SummaryTab.speed:
-        return _buildInfoRow('Velocidade atual', '60', 'Km/h', 'Velocidade ideal', '30', 'Km/h');
-      case SummaryTab.braking:
-        return _buildInfoRow('Frenagens bruscas', '2', 'hoje', 'Média semanal', '5', '');
-      case SummaryTab.acceleration:
-        return _buildInfoRow('Acelerações bruscas', '4', 'hoje', 'Média semanal', '8', '');
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
-  Widget _buildInfoRow(String label1, String value1, String unit1, String label2, String value2, String unit2) {
+  Widget _buildInfoRow(String label1, String value1, String unit1, String label2,
+      String value2, String unit2) {
     return Row(
       children: [
         Expanded(child: _buildInfoCard(label1, value1, unit1)),
@@ -343,7 +476,9 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+              Text(value,
+                  style: const TextStyle(
+                      fontSize: 28, fontWeight: FontWeight.bold)),
               const SizedBox(width: 4),
               Text(unit, style: const TextStyle(fontSize: 14, color: Colors.grey)),
             ],
@@ -352,7 +487,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
       ),
     );
   }
-  
+
   Widget _buildTipsSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -364,44 +499,10 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     );
   }
 
-  Widget _buildHerbieCard() {
-    return Card(
-      color: Colors.grey[300],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const Text('HERBIE', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(width: 4),
-                Icon(Icons.auto_awesome, color: Colors.blue.shade700, size: 16),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.mic, color: Colors.blue),
-                const SizedBox(width: 8),
-                Expanded(child: _buildWaveform()), // Simulação da onda
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Frenagem brusca detectada, atenção!',
-              style: TextStyle(color: Colors.grey.shade800),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildWaveform() {
     final random = Random();
-    final List<double> barHeights = List.generate(40, (index) => random.nextDouble() * 20 + 2);
+    final List<double> barHeights =
+        List.generate(40, (index) => random.nextDouble() * 20 + 2);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,

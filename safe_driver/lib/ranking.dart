@@ -1,25 +1,90 @@
 import 'package:flutter/material.dart';
 
-// Modelo para estruturar os dados de um desafio
+// NOVO: Imports para a lógica de backend
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:safe_driver/login.dart'; // Ajuste o nome do arquivo de login se necessário
+
+
+// ========================================================================= //
+// MODELO DE DADOS DO USUÁRIO (pode ser movido para um arquivo separado)
+// ========================================================================= //
+class UserModel {
+  final String fullName;
+  final String? profilePictureUrl;
+  final int points;
+  
+  // Adicionei um campo para a posição no ranking que precisaria vir da API
+  final int rankingPosition;
+
+  UserModel({
+    required this.fullName,
+    this.profilePictureUrl,
+    required this.points,
+    required this.rankingPosition,
+  });
+
+  factory UserModel.fromJson(Map<String, dynamic> json) {
+    return UserModel(
+      fullName: json['fullName'] ?? 'Usuário',
+      profilePictureUrl: json['profilePictureUrl'],
+      points: json['points'] ?? 0,
+      // Supondo que a API do usuário também retorne a posição no ranking
+      rankingPosition: json['rankingPosition'] ?? 0,
+    );
+  }
+}
+
+
+// ========================================================================= //
+// MODELO DE DADOS DO DESAFIO (modificado para bater com o payload)
+// ========================================================================= //
 class Challenge {
-  final int id;
+  final String userChallengeId; // Mudado de int para String (UUID)
   final String title;
   final String description;
-  double progress; // Progresso pode mudar
+  final double progress;
   final int points;
+  final String status; // NOVO: para saber se está 'COMPLETED', etc.
+  final String? redeemedAt; // NOVO: para filtrar desafios já resgatados
 
   Challenge({
-    required this.id,
+    required this.userChallengeId,
     required this.title,
     required this.description,
     required this.progress,
     required this.points,
+    required this.status,
+    this.redeemedAt,
   });
 
-  // Um desafio está completo se o progresso for 100%
-  bool get isCompleted => progress >= 1.0;
+  // Um desafio está pronto para resgate se o status for 'COMPLETED'
+  bool get isCompleted => status == 'COMPLETED';
+
+  factory Challenge.fromJson(Map<String, dynamic> json) {
+    // O progresso pode vir como int (0) ou double (0.75). Garantimos que seja double.
+    double progressValue = (json['progress'] as num?)?.toDouble() ?? 0.0;
+    
+    // Se o progresso vier como porcentagem (ex: 71 para 71%), descomente a linha abaixo
+    // if (progressValue > 1.0) progressValue = progressValue / 100.0;
+
+    return Challenge(
+      userChallengeId: json['userChallengeId'],
+      title: json['title'],
+      description: json['description'],
+      points: json['pointsReward'],
+      status: json['status'],
+      progress: progressValue,
+      redeemedAt: json['redeemedAt'],
+    );
+  }
 }
 
+
+// ========================================================================= //
+// WIDGET DA TELA DE RANKING
+// ========================================================================= //
 class RankingScreen extends StatefulWidget {
   const RankingScreen({super.key});
 
@@ -29,140 +94,185 @@ class RankingScreen extends StatefulWidget {
 
 class _RankingScreenState extends State<RankingScreen> {
   // Variáveis de estado para gerenciar os dados da tela
-  int _totalPoints = 0;
-  int _userPosition = 0;
+  UserModel? _user;
   List<Challenge> _challenges = [];
+  bool _isLoading = true; // NOVO: Estado de carregamento
 
   @override
   void initState() {
     super.initState();
-    _fetchUserData();
+    _fetchData();
   }
 
-  // Função para buscar os dados iniciais do usuário e dos desafios
-  void _fetchUserData() {
-    // =======================================================================
-    // TODO: BACKEND - BUSCAR DADOS REAIS DO USUÁRIO E DESAFIOS
-    // =======================================================================
-    // Aqui você faria uma chamada ao seu backend para buscar:
-    // 1. O total de pontos e a posição no ranking do usuário logado.
-    // 2. A lista de desafios disponíveis para este usuário, com seu progresso atual.
-    // =======================================================================
+  // MODIFICADO: Função para buscar todos os dados da tela em paralelo
+  Future<void> _fetchData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt');
+      if (token == null) {
+        _handleLogout();
+        return;
+      }
 
-    // Usando dados mocados (fictícios) para o desenvolvimento
-    setState(() {
-      _totalPoints = 560;
-      _userPosition = 10;
-      _challenges = [
-        Challenge(
-            id: 1,
-            title: "Economize combustível!",
-            description: "Economize R\$20,00 em combustível esta semana.",
-            progress: 1.0, // 100%
-            points: 20),
-        Challenge(
-            id: 2,
-            title: "Frenagem Consciente!",
-            description: "Dirija 100km sem frenagens bruscas.",
-            progress: 0.71, // 71%
-            points: 15),
-        Challenge(
-            id: 3,
-            title: "Maratona Segura",
-            description: "Dirija por 50km mantendo a pontuação de segurança acima de 90.",
-            progress: 0.95, // 95%
-            points: 120),
-        Challenge(
-            id: 4,
-            title: "Motorista Perfeito",
-            description: "Complete 3 viagens sem nenhuma advertência.",
-            progress: 1.0, // 100%
-            points: 100),
-      ];
-    });
+      final headers = {'Authorization': 'Bearer $token'};
+
+      // Faz as duas chamadas de API em paralelo
+      final results = await Future.wait([
+        http.get(Uri.parse('http://localhost:8080/api/v1/users/loged'), headers: headers),
+        http.get(Uri.parse('http://localhost:8080/api/v1/users/me/challenges'), headers: headers),
+      ]);
+
+      final userResponse = results[0];
+      final challengesResponse = results[1];
+
+      // Processa a resposta do usuário
+      if (userResponse.statusCode == 200) {
+        final userData = json.decode(utf8.decode(userResponse.bodyBytes));
+        _user = UserModel.fromJson(userData);
+      } else {
+        throw Exception('Falha ao carregar dados do usuário: ${userResponse.statusCode}');
+      }
+
+      // Processa a resposta dos desafios
+      if (challengesResponse.statusCode == 200) {
+        final List<dynamic> challengesData = json.decode(utf8.decode(challengesResponse.bodyBytes));
+        _challenges = challengesData
+            .map((data) => Challenge.fromJson(data))
+            .where((challenge) => challenge.redeemedAt == null) // Filtra desafios já resgatados
+            .toList();
+      } else {
+        throw Exception('Falha ao carregar desafios: ${challengesResponse.statusCode}');
+      }
+
+    } catch (e) {
+      print("Erro ao buscar dados: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao carregar os dados. Tente novamente.')),
+        );
+        // Se o erro for de autenticação (401/403), desloga
+        if (e.toString().contains('401') || e.toString().contains('403')) {
+          _handleLogout();
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  // Função para resgatar os pontos de um desafio
-  void _redeemChallenge(Challenge challenge) {
-    // =======================================================================
-    // TODO: BACKEND - VALIDAR E SALVAR RESGATE DE PONTOS
-    // =======================================================================
-    // 1. Envie o ID do desafio (challenge.id) para o seu servidor.
-    // 2. O servidor deve validar se o desafio realmente foi completado.
-    // 3. Se for válido, o servidor adiciona os pontos ao total do usuário no banco
-    //    de dados e marca o desafio como resgatado para não aparecer mais.
-    // 4. A atualização no app (abaixo) só deve ocorrer se a chamada ao
-    //    backend for bem-sucedida.
-    // =======================================================================
+  // MODIFICADO: Função para resgatar os pontos de um desafio
+  Future<void> _redeemChallenge(Challenge challenge) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt');
+      if (token == null) {
+        _handleLogout();
+        return;
+      }
 
-    // Lógica do lado do cliente (simulação)
-    setState(() {
-      _totalPoints += challenge.points;
-      _challenges.removeWhere((c) => c.id == challenge.id);
-    });
+      // ATENÇÃO: Endpoint de exemplo. Verifique qual é o seu endpoint para resgatar.
+      // Geralmente é um POST para uma rota específica do desafio.
+      final response = await http.post(
+        Uri.parse('http://localhost:8080/api/v1/user-challenges/${challenge.userChallengeId}/redeem'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('+${challenge.points} pontos! Desafio "${challenge.title}" resgatado!'),
-        backgroundColor: Colors.green,
-      ),
-    );
+      if (response.statusCode == 200 && mounted) {
+        setState(() {
+          // Adiciona os pontos ao usuário e remove o desafio da lista local
+          _user = UserModel(
+            fullName: _user!.fullName,
+            points: _user!.points + challenge.points,
+            rankingPosition: _user!.rankingPosition,
+            profilePictureUrl: _user!.profilePictureUrl
+          );
+          _challenges.removeWhere((c) => c.userChallengeId == challenge.userChallengeId);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('+${challenge.points} pontos! Desafio "${challenge.title}" resgatado!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        throw Exception('Falha ao resgatar desafio: ${response.statusCode}');
+      }
+    } catch (e) {
+      print("Erro ao resgatar desafio: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Não foi possível resgatar o desafio.'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
+  
+  void _handleLogout() {
+    // Implementação do logout
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (Route<dynamic> route) => false,
+      );
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 1. Cor de fundo ajustada
       backgroundColor: Colors.grey[200],
       appBar: AppBar(
-        // Cor da AppBar ajustada
         backgroundColor: Colors.grey[200],
         elevation: 0,
-        title: const Text(
-          "Ranking",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-        ),
+        title: const Text("Ranking", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            _buildUserProfileCard(),
-            const SizedBox(height: 24),
-            _buildChallengesSection(),
-          ],
-        ),
-      ),
+      // MODIFICADO: Exibe um loader enquanto os dados estão sendo carregados
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  _buildUserProfileCard(),
+                  const SizedBox(height: 24),
+                  _buildChallengesSection(),
+                ],
+              ),
+            ),
     );
   }
 
   Widget _buildUserProfileCard() {
     return Card(
-      // Cor do card ajustada para um cinza mais claro
       color: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 24.0),
         child: Column(
           children: [
-            const CircleAvatar(
+            // MODIFICADO: Usa a foto de perfil do usuário
+            CircleAvatar(
               radius: 50,
-              backgroundColor: Color(0xFFBDBDBD),
-              child: Icon(Icons.person, size: 60, color: Color(0xFFFAFAFA)),
+              backgroundColor: Colors.grey[300],
+              backgroundImage: _user?.profilePictureUrl != null && _user!.profilePictureUrl!.isNotEmpty
+                ? NetworkImage(_user!.profilePictureUrl!)
+                : null,
+              child: _user?.profilePictureUrl == null || _user!.profilePictureUrl!.isEmpty
+                ? const Icon(Icons.person, size: 60, color: Colors.white)
+                : null,
             ),
             const SizedBox(height: 12),
-            const Text(
-              "User", // TODO: BACKEND - Puxar nome real do usuário
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
+            // MODIFICADO: Usa o nome do usuário
+            Text(
+              _user?.fullName ?? 'Carregando...',
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
             ),
             const SizedBox(height: 20),
             _buildStatsCard(),
@@ -184,9 +294,9 @@ class _RankingScreenState extends State<RankingScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildStatItem(Icons.star_border, "$_totalPoints", "Pontos"),
-              _buildStatItem(Icons.emoji_events_outlined, "${_userPosition}°", "Posição"),
-              // 4. Contador de desafios agora é dinâmico
+              // MODIFICADO: Dados dinâmicos
+              _buildStatItem(Icons.star_border, "${_user?.points ?? 0}", "Pontos"),
+              _buildStatItem(Icons.emoji_events_outlined, "${_user?.rankingPosition ?? 0}°", "Posição"),
               _buildStatItem(Icons.track_changes_outlined, "${_challenges.length}", "Desafios"),
             ],
           ),
@@ -200,19 +310,9 @@ class _RankingScreenState extends State<RankingScreen> {
       children: [
         Icon(icon, color: Colors.black54, size: 30),
         const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-          ),
-        ),
+        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
         const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, color: Colors.black54),
-        ),
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
       ],
     );
   }
@@ -223,20 +323,13 @@ class _RankingScreenState extends State<RankingScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // 4. Título da seção com contador dinâmico
             Text(
               "Desafios (${_challenges.length})",
-              style: const TextStyle(
-                color: Colors.black, // Cor do texto ajustada
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(color: Colors.black, fontSize: 22, fontWeight: FontWeight.bold),
             ),
             IconButton(
               icon: const Icon(Icons.filter_list, color: Colors.blue),
-              onPressed: () {
-                // TODO: Implementar lógica de filtro
-              },
+              onPressed: () { /* TODO: Implementar filtro */ },
             ),
           ],
         ),
@@ -246,12 +339,16 @@ class _RankingScreenState extends State<RankingScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
-            // Constrói a lista de desafios dinamicamente
-            child: Column(
-              children: _challenges.map((challenge) {
-                return _buildChallengeItem(challenge);
-              }).toList(),
-            ),
+            child: _challenges.isEmpty
+              ? const Padding( // Mensagem para quando não há desafios
+                  padding: EdgeInsets.symmetric(vertical: 32.0),
+                  child: Text("Nenhum desafio disponível no momento.", style: TextStyle(color: Colors.grey)),
+                )
+              : Column(
+                  children: _challenges.map((challenge) {
+                    return _buildChallengeItem(challenge);
+                  }).toList(),
+                ),
           ),
         ),
       ],
@@ -269,28 +366,15 @@ class _RankingScreenState extends State<RankingScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  challenge.title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
-                ),
+                Text(challenge.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black)),
                 const SizedBox(height: 4),
-                Text(
-                  challenge.description,
-                  style: const TextStyle(fontSize: 14, color: Colors.black54),
-                ),
+                Text(challenge.description, style: const TextStyle(fontSize: 14, color: Colors.black54)),
                 const SizedBox(height: 12),
                 ElevatedButton(
-                  // 3. Lógica de resgate no onPressed
                   onPressed: challenge.isCompleted ? () => _redeemChallenge(challenge) : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: challenge.isCompleted ? Colors.blue : Colors.grey,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   child: Text(
                     "Resgatar ${challenge.points} pts",
@@ -321,11 +405,7 @@ class _RankingScreenState extends State<RankingScreen> {
           Center(
             child: Text(
               "${(progress * 100).toInt()}%",
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black),
             ),
           ),
         ],
